@@ -1,10 +1,11 @@
 import { getBearerToken, validateJWT } from "../auth";
 import { respondWithJSON } from "./json";
-import { getVideo, updateVideo } from "../db/videos";
-import type { ApiConfig } from "../config";
+import { getVideo, updateVideo, type Video } from "../db/videos";
+import { cfg, type ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import { arrayBuffer, buffer } from "stream/consumers";
+import { randomBytes } from "crypto";
 
 const MAX_UPLOAD_SIZE = 10;
 
@@ -51,18 +52,26 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
 
   const mediaType = file.type;
 
+  if (mediaType != "image/jpeg" && mediaType != "image/png") {
+    throw new BadRequestError("the file type is wrong");
+  }
+
   let imageData = await file.arrayBuffer();
   let bufferImageData = Buffer.from(imageData);
-  let base64ImageData = bufferImageData.toString("base64");
 
   let videoMetadata = getVideo(cfg.db, videoId);
   if (videoMetadata?.userID != userID) {
     throw new UserForbiddenError("The user is not authorised");
   }
 
-  const dataURL = `data:${mediaType};base64,${base64ImageData}`;
+  const fileName = `${randomBytes(32).toString("base64url")}.${mediaType.split("/")[1]}`;
+  const filePath = `${cfg.assetsRoot}/${fileName}`;
 
-  videoMetadata.thumbnailURL = dataURL;
+  const thumbnailURL = `http://localhost:${cfg.port}/assets/${fileName}`;
+
+  videoMetadata.thumbnailURL = thumbnailURL;
+
+  await Bun.write(filePath, bufferImageData);
 
   updateVideo(cfg.db, videoMetadata);
 
