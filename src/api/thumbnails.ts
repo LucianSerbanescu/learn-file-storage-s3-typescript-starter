@@ -1,23 +1,14 @@
 import { getBearerToken, validateJWT } from "../auth";
 import { respondWithJSON } from "./json";
-import { getVideo, updateVideo, type Video } from "../db/videos";
-import { cfg, type ApiConfig } from "../config";
+import { getVideo, updateVideo } from "../db/videos";
+import { type ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
-import { arrayBuffer, buffer } from "stream/consumers";
 import { randomBytes } from "crypto";
 
 const MAX_UPLOAD_SIZE = 10;
 
-type Thumbnail = {
-  data: ArrayBuffer;
-  mediaType: string;
-};
-
 export async function handlerGetThumbnail(cfg: ApiConfig, req: BunRequest) {
-  /*
-  this function miight want to be deleted
-  */
   const { videoId } = req.params as { videoId?: string };
   if (!videoId) {
     throw new BadRequestError("Invalid video ID");
@@ -27,6 +18,8 @@ export async function handlerGetThumbnail(cfg: ApiConfig, req: BunRequest) {
   if (!video) {
     throw new NotFoundError("Couldn't find video");
   }
+
+  return respondWithJSON(200, video);
 }
 
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
