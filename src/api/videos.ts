@@ -7,6 +7,7 @@ import { getBearerToken, validateJWT } from "../auth";
 import { getUser } from "../db/users";
 import { getVideo, updateVideo } from "../db/videos";
 import { rm } from "fs/promises";
+import { getVideo, updateVideo, type Video } from "../db/videos";
 
 export async function uploadVideoToS3(
   cfg: ApiConfig,
@@ -19,6 +20,14 @@ export async function uploadVideoToS3(
   });
   const videoFile = Bun.file(processFilePath);
   await s3file.write(videoFile, { type: contentType });
+}
+
+export async function generatePresignedURL(
+  cfg: ApiConfig,
+  key: string,
+  expireTime: number,
+) {
+  return cfg.s3Client.presign(`${key}`, { expiresIn: expireTime });
 }
 
 export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
@@ -59,13 +68,15 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   }
 
   const tempFilePath = `${cfg.assetsRoot}/temp/${videoId}.mp4`;
-  
+
   await Bun.write(tempFilePath, file);
 
   const processedFilePath = await processVideoForFastStart(tempFilePath);
 
   const key = `${videoId}.mp4`;
   await uploadVideoToS3(cfg, key, processedFilePath, "video/mp4");
+
+  videoMetadata.videoURL = `${key}`;
 
   const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${key}`;
   videoMetadata.videoURL = videoURL;
@@ -76,9 +87,9 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
     rm(`${tempFilePath}.processed.mp4`, { force: true }),
   ]);
 
-  return respondWithJSON(200, videoId);
+  const signedVideo = dbVideoToSignedVideo(cfg, video);
+  return respondWithJSON(200, signedVideo);
 }
-
 
 export async function processVideoForFastStart(inputFilePath: string) {
   const processedFilePath = `${inputFilePath}.processed.mp4`;
@@ -103,9 +114,21 @@ export async function processVideoForFastStart(inputFilePath: string) {
 
   const errorText = await new Response(process.stderr).text();
   const exitCode = await process.exited;
-if (exitCode !== 0) {
+  if (exitCode !== 0) {
     throw new Error(`FFmpeg error: ${errorText}`);
   }
 
   return processedFilePath;
 }
+
+
+export async function dbVideoToSignedVideo(cfg: ApiConfig, video: Video) {
+  if (!video.videoURL) {
+    return video;
+  }
+
+  video.videoURL = await generatePresignedURL(cfg, video.videoURL, 5 * 60);
+
+  return video;
+}
+
