@@ -60,15 +60,12 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
 
   const tempFilePath = `${cfg.assetsRoot}/temp/${videoId}.mp4`;
   
-  Bun.write(tempFilePath, file);
+  await Bun.write(tempFilePath, file);
 
   const processedFilePath = await processVideoForFastStart(tempFilePath);
 
   const key = `${videoId}.mp4`;
   await uploadVideoToS3(cfg, key, processedFilePath, "video/mp4");
-
-  
-  await uploadVideoToS3(cfg, key, tempFilePath, "video/mp4");
 
   const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${key}`;
   videoMetadata.videoURL = videoURL;
